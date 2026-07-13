@@ -53,6 +53,41 @@
             padding: 12px;
         }
 
+        /* 💡 新增：搜索框的相对定位与联想下拉框样式 */
+        .search-container {
+            position: relative;
+            display: flex;
+            gap: 4px;
+            margin-bottom: 8px;
+        }
+
+        .suggestions {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            width: calc(100% - 100px); /* 给按钮留点空间 */
+            background: white;
+            border: 1px solid #ccc;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 100;
+            max-height: 200px;
+            overflow-y: auto;
+            display: none;
+            border-radius: 4px;
+        }
+
+        .suggestion-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+            font-size: 14px;
+        }
+
+        .suggestion-item:hover {
+            background: #f0f0f0;
+            color: #d9534f;
+        }
+
         .item {
             border: 1px solid #ddd;
             padding: 8px;
@@ -124,10 +159,11 @@
 <div id="app">
     <div class="panel">
         <h3>分类</h3>
-        <div style="display: flex; gap: 4px; margin-bottom: 8px;">
-            <input id="search" type="text" placeholder="搜索物品..." style="flex: 1; margin-bottom: 0;">
+        <div class="search-container">
+            <input id="search" type="text" placeholder="搜索物品... (支持拼音/汉字)" style="flex: 1; margin-bottom: 0;">
             <button onclick="searchItem()">🔍定位</button>
             <button onclick="clearSearch()">✖</button>
+            <div id="suggestions" class="suggestions"></div>
         </div>
         <div id="categories"></div>
         <button onclick="addItem()">新增物品</button>
@@ -293,7 +329,7 @@
             };
 
             state.items
-                .filter(x => x.cat === cat && (keyword === "" || x.name.toLowerCase().includes(keyword)))
+                .filter(x => x.cat === cat)
                 .forEach(x => drawItem(list, x));
         });
 
@@ -563,11 +599,7 @@
         save();
     };
 
-    document.getElementById("search").oninput = () => {
-        render(); // 输入搜索词时触发重新渲染
-    };
-
-        // 💡 新增：一键清空搜索框并恢复全景
+    // 💡 新增：一键清空搜索框并恢复全景
     function clearSearch() {
         document.getElementById("search").value = "";
         render(); // 重新渲染，因为搜索词没了，所有东西都会回来
@@ -622,6 +654,61 @@
             alert(`找到物品：${found.name}\n具体位置在：${loc}`);
         }
     }
+
+    // 💡 新增：输入框的智能联想监听
+    document.getElementById("search").addEventListener("input", function(e) {
+        let query = e.target.value.trim().toLowerCase();
+        let sugBox = document.getElementById("suggestions");
+        sugBox.innerHTML = ""; // 清空上次的联想
+
+        if (!query) {
+            sugBox.style.display = "none";
+            return;
+        }
+
+        // 找出所有名称包含输入字符的物品
+        let matches = state.items.filter(x => x.name.toLowerCase().includes(query));
+
+        if (matches.length === 0) {
+            sugBox.style.display = "none";
+            return;
+        }
+
+        sugBox.style.display = "block"; // 显示下拉框
+
+        // 渲染联想列表
+        matches.forEach(m => {
+            let div = document.createElement("div");
+            div.className = "suggestion-item";
+            // 贴心地显示这个物品在哪，方便区分重名
+            let locText = m.box ? `📦 ${m.box}` : `📁 ${m.cat}`;
+            div.innerHTML = `<b>${m.name}</b> <span style="font-size:12px; color:#888; margin-left:8px;">${locText}</span>`;
+
+            // 点击下拉框里的选项，直接填入搜索框并触发定位！
+            div.onclick = () => {
+                document.getElementById("search").value = m.name;
+                sugBox.style.display = "none";
+                searchItem();
+            };
+            sugBox.appendChild(div);
+        });
+    });
+
+    // 💡 新增：点击网页其他空白处时，自动收起联想框，保持整洁
+    document.addEventListener("click", (e) => {
+        if (!e.target.closest('.search-container')) {
+            let sugBox = document.getElementById("suggestions");
+            if (sugBox) sugBox.style.display = "none";
+        }
+    });
+
+    // 💡 修复：补回丢失的回车键（Enter）监听
+    document.getElementById("search").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+            document.getElementById("suggestions").style.display = "none"; // 敲回车时顺手关掉联想框
+            searchItem();
+        }
+    });
 
     // 页面加载完毕后初次渲染
     render();
