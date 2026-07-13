@@ -160,7 +160,7 @@
     <div class="panel">
         <h3>分类</h3>
         <div class="search-container">
-            <input id="search" type="text" placeholder="搜索物品... (支持拼音/汉字)" style="flex: 1; margin-bottom: 0;">
+            <input id="search" type="text" autocomplete="off" placeholder="搜索物品..." style="flex: 1; margin-bottom: 0;">
             <button onclick="searchItem()">🔍定位</button>
             <button onclick="clearSearch()">✖</button>
             <div id="suggestions" class="suggestions"></div>
@@ -262,6 +262,13 @@
         }
     });
 
+    function saveCategoryToggleState() {
+        localStorage.setItem(
+            "pack_category_toggle",
+            JSON.stringify(catToggleState)
+        );
+    }
+
     function save() {
         localStorage.setItem("pack_state", JSON.stringify(state));
         updateProgress(); // 每次保存时更新进度
@@ -277,7 +284,9 @@
         }
     }
 
-    let catToggleState = {};
+    let catToggleState = JSON.parse(
+        localStorage.getItem("pack_category_toggle") || "{}"
+    );
 
     function render() {
         let keyword = document.getElementById("search").value.toLowerCase();
@@ -326,6 +335,7 @@
                     list.style.display = "none";
                     icon.innerText = "▶";
                 }
+                saveCategoryToggleState();
             };
 
             state.items
@@ -514,7 +524,8 @@
         if (needsUncategorized && !state.categories.includes("未分类")) {
             state.categories.push("未分类");
         }
-
+        delete catToggleState[cat];
+        saveCategoryToggleState();
         save(); render();
     }
 
