@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>新加坡打包清单</title>
+    <style>
+        body {
+            font-family: Arial, "Microsoft YaHei", sans-serif;
+            margin: 20px;
+            color: #222;
+        }
+
+        h1 {
+            margin-bottom: 8px;
+        }
+
+        /* 新增：进度条样式 */
+        .progress-text {
+            color: #d9534f;
+            font-size: 18px;
+            font-weight: bold;
+            margin-left: 15px;
+        }
+
+        #app {
+            display: grid;
+            grid-template-columns: 1fr 3fr;
+            gap: 16px;
+            align-items: start; /* 👈 【修改1】：加上这一行，让左右两边脱离“强行等高”绑定 */
+        }
+
+        /* 👈 【修改2】：新增这个“吸顶悬浮”的样式 */
+        .sticky-panel {
+            position: sticky;
+            top: 20px; /* 滑动时，距离屏幕顶部保持 20px 的距离 */
+            max-height: calc(100vh - 40px); /* 面板最大高度不超过屏幕边缘 */
+            overflow-y: auto; /* 如果你未来加了 10 个箱子，右侧面板自己内部也可以滚动！ */
+        }
+
+        /* 新增：响应式设计，方便在手机端查看 */
+        @media (max-width: 768px) {
+            #app {
+                grid-template-columns: 1fr;
+            }
+            .columns {
+                flex-direction: column;
+            }
+        }
+
+        .panel {
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 12px;
+        }
+
+        .item {
+            border: 1px solid #ddd;
+            padding: 8px;
+            margin: 6px 0;
+            background: #fafafa;
+            cursor: grab;
+        }
+
+        .item small {
+            display: block;
+            color: #666;
+        }
+
+        .columns {
+            display: flex;
+            gap: 10px;
+            align-items: flex-start;
+        }
+
+/* 💡 新增：箱子里面的位置提示自动隐藏 */
+        .box .location-hint {
+            display: none;
+        }
+
+        .box {
+            flex: 1;
+            min-height: 300px;
+            border: 1px dashed #999;
+            padding: 10px;
+        }
+
+        button {
+            margin: 3px;
+        }
+
+        input[type=text] {
+            width: 90%;
+            margin-bottom: 8px;
+        }
+
+        .done {
+            text-decoration: line-through;
+            color: #888;
+            background-color: #e9ecef; /* 完成后改变背景色更直观 */
+        }
+
+        .tag {
+            font-size: 12px;
+            color: #666;
+            margin: 4px 0;
+        }
+
+        .qtyInput {
+            width: 55px;
+            text-align: center;
+        }
+
+        .minusBtn, .plusBtn {
+            width: 28px;
+            height: 28px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+<h1>🇸🇬 新加坡留学打包清单 <span class="progress-text" id="progress-text"></span></h1>
+<p>拖动物品到箱子；勾选完成；备注自动保存。</p>
+
+<div id="app">
+    <div class="panel">
+        <h3>分类</h3>
+        <div style="display: flex; gap: 4px; margin-bottom: 8px;">
+            <input id="search" type="text" placeholder="搜索物品..." style="flex: 1; margin-bottom: 0;">
+            <button onclick="searchItem()">🔍定位</button>
+            <button onclick="clearSearch()">✖</button>
+        </div>
+        <div id="categories"></div>
+        <button onclick="addItem()">新增物品</button>
+        <button onclick="addCategory()">新增分类</button>
+        <button onclick="addBox()">新增箱子</button>
+        <hr>
+        <button onclick="exportData()">📤 导出清单</button>
+        <button onclick="importData()">📥 导入清单</button>
+        <button onclick="resetData()">🔄 恢复默认</button>
+        <h3>备注</h3>
+        <textarea id="notes" style="width:100%;height:120px"></textarea>
+    </div>
+
+    <div class="panel sticky-panel">
+        <h3>箱子</h3>
+        <div id="boxes" class="columns"></div>
+    </div>
+</div>
+
+<h2>⚠️ Tips</h2>
+<ul>
+    <li>药物保留原包装，建议携带个人合理用量。</li>
+    <li>含 Codeine（可待因）的止咳药在新加坡属于需要特别注意的成分。</li>
+    <li>充电宝、电池等锂电池通常应随身携带，不要托运。</li>
+    <li>Westwood 有家具，但床品、个人用品、收纳用品仍需准备。</li>
+</ul>
+
+<h2>💊 药物说明</h2>
+<ul>
+    <li><b>对乙酰氨基酚</b>：退烧、止痛；对血小板和凝血影响较小；注意总剂量。</li>
+    <li><b>布洛芬</b>：退烧、止痛、抗炎；属于NSAIDs，可能增加胃刺激和出血风险。</li>
+    <li><b>阿司匹林</b>：NSAIDs之一，同时有抗血小板作用，会影响血小板聚集；普通止痛用途不建议长期自行使用。</li>
+    <li><b>抗过敏药（如氯雷他定、西替利嗪）</b>：鼻炎、荨麻疹等过敏症状。</li>
+    <li><b>蒙脱石散</b>：腹泻辅助；注意与其他口服药错开。</li>
+    <li><b>口服补液盐</b>：腹泻、脱水时补充水和电解质。</li>
+</ul>
+
+<script>
+    const defaultItems = [
+        {cat: "证件", name: "护照", qty: 1, box: "手提"},
+        {cat: "证件", name: "IPA", qty: 1, box: "手提"},
+        {cat: "证件", name: "录取信", qty: 1, box: "手提"},
+        {cat: "证件", name: "银行卡", qty: 2, box: "手提"},
+        {cat: "电子", name: "手机", qty: 1, box: "手提"},
+        {cat: "电子", name: "电脑", qty: 1, box: "手提"},
+        {cat: "电子", name: "充电器", qty: 3, box: "手提"},
+        {cat: "电子", name: "Type G转换头", qty: 2, box: "手提"},
+        {cat: "电子", name: "Bose耳机", qty: 1, box: "手提"},
+        {cat: "衣物", name: "短袖T恤", qty: 8, box: "箱1"},
+        {cat: "衣物", name: "长袖", qty: 5, box: "箱1"},
+        {cat: "衣物", name: "背心", qty: 4, box: "箱1"},
+        {cat: "衣物", name: "薄外套", qty: 3, box: "箱1"},
+        {cat: "衣物", name: "卫衣", qty: 2, box: "箱1"},
+        {cat: "衣物", name: "长裤", qty: 8, box: "箱1"},
+        {cat: "衣物", name: "内衣", qty: 10, box: "箱1"},
+        {cat: "衣物", name: "袜子", qty: 10, box: "箱1"},
+        {cat: "宿舍", name: "床单", qty: 1, box: "箱2"},
+        {cat: "宿舍", name: "被套", qty: 1, box: "箱2"},
+        {cat: "宿舍", name: "枕套", qty: 2, box: "箱2"},
+        {cat: "宿舍", name: "薄被", qty: 1, box: "箱2"},
+        {cat: "宿舍", name: "毛巾", qty: 3, box: "箱2"},
+        {cat: "洗护", name: "洗发水", qty: 1, box: "箱2"},
+        {cat: "洗护", name: "沐浴露", qty: 1, box: "箱2"},
+        {cat: "洗护", name: "洗面奶", qty: 1, box: "箱2"},
+        {cat: "洗护", name: "护肤品", qty: 1, box: "箱2"},
+        {cat: "药物", name: "布洛芬", qty: 1, box: "箱2"},
+        {cat: "药物", name: "对乙酰氨基酚", qty: 1, box: "箱2"},
+        {cat: "药物", name: "抗过敏药", qty: 1, box: "箱2"},
+        {cat: "药物", name: "肠胃药", qty: 1, box: "箱2"},
+        {cat: "药物", name: "创可贴", qty: 20, box: "箱2"},
+        {cat: "视力", name: "眼镜布", qty: 2, box: "手提"},
+        {cat: "视力", name: "备用眼镜", qty: 1, box: "手提"},
+        {cat: "视力", name: "隐形护理用品", qty: 1, box: "手提"},
+        {cat: "兴趣", name: "纸质书", qty: 5, box: "箱2"},
+        {cat: "兴趣", name: "BB-8", qty: 1, box: "箱2"},
+        {cat: "兴趣", name: "五号电池", qty: 6, box: "手提"},
+        {cat: "兴趣", name: "七号电池", qty: 2, box: "手提"}
+    ];
+
+    let state = JSON.parse(localStorage.getItem("pack_state") || "null") || {
+        boxes: {"手提": [], "箱1": [], "箱2": []},
+        categories: ["证件", "电子", "衣物", "宿舍", "洗护", "药物", "视力", "兴趣"],
+        items: defaultItems.map((x, i) => ({
+            id: i, name: x.name, qty: x.qty, cat: x.cat, box: x.box, done: false, note: ""
+        })),
+        notes: ""
+    };
+
+    // 兼容旧版本数据
+    state.items.forEach(item => {
+        if (!state.categories) {
+            state.categories = [...new Set(state.items.map(x => x.cat))];
+        }
+        if (item.qty === undefined) {
+            item.qty = 1;
+        }
+    });
+
+    function save() {
+        localStorage.setItem("pack_state", JSON.stringify(state));
+        updateProgress(); // 每次保存时更新进度
+    }
+
+    // 更新打包进度统计功能
+    function updateProgress() {
+        const totalItems = state.items.reduce((sum, item) => sum + item.qty, 0);
+        const doneItems = state.items.filter(item => item.done).reduce((sum, item) => sum + item.qty, 0);
+        const progressEl = document.getElementById("progress-text");
+        if (progressEl) {
+            progressEl.innerText = `[ 已打包: ${doneItems} / ${totalItems}件 ]`;
+        }
+    }
+
+    let catToggleState = {};
+
+    function render() {
+        let keyword = document.getElementById("search").value.toLowerCase();
+        document.getElementById("notes").value = state.notes;
+        let c = document.getElementById("categories");
+        c.innerHTML = "";
+
+        state.categories.forEach(cat => {
+            // 💡 初始化记忆：如果这个大类还没记录过，默认设为 true（展开）
+            if (catToggleState[cat] === undefined) {
+                catToggleState[cat] = true;
+            }
+
+            let title = document.createElement("h4");
+            title.style.cursor = "pointer";
+            title.style.userSelect = "none";
+
+            // 💡 根据记忆，决定刚画出来时用哪个箭头
+            let arrow = catToggleState[cat] ? "▼" : "▶";
+
+            title.innerHTML = `
+                <span class="toggle-icon" style="color: #666; font-size: 14px; margin-right: 5px;">${arrow}</span>
+                <span>${cat}</span>
+                <button onclick="event.stopPropagation(); renameCategory('${cat}')">✏</button>
+                <button onclick="event.stopPropagation(); deleteCategory('${cat}')">🗑</button>
+                <button onclick="event.stopPropagation(); addItemToCategory('${cat}')">＋物品</button>
+            `;
+            c.appendChild(title);
+
+            let list = document.createElement("div");
+            list.id = "cat-list-" + cat;
+            // 💡 这里不再是写死的 "block"，而是听从记忆库的安排！
+            list.style.display = catToggleState[cat] ? "block" : "none";
+            c.appendChild(list);
+
+            title.onclick = () => {
+                // 💡 翻转记忆：如果是展开的就记录为折叠，反之亦然
+                catToggleState[cat] = !catToggleState[cat];
+
+                // 立即更新画面
+                let icon = title.querySelector(".toggle-icon");
+                if (catToggleState[cat]) {
+                    list.style.display = "block";
+                    icon.innerText = "▼";
+                } else {
+                    list.style.display = "none";
+                    icon.innerText = "▶";
+                }
+            };
+
+            state.items
+                .filter(x => x.cat === cat && (keyword === "" || x.name.toLowerCase().includes(keyword)))
+                .forEach(x => drawItem(list, x));
+        });
+
+        let boxes = document.getElementById("boxes");
+        boxes.innerHTML = "";
+        Object.keys(state.boxes).forEach(b => {
+            let div = document.createElement("div");
+            div.className = "box";
+
+            // 💡 获取这个箱子里的所有物品
+            let boxItems = state.items.filter(item => item.box === b);
+
+            // 💡 计算箱子里的总件数
+            let totalQty = boxItems.reduce((sum, item) => sum + item.qty, 0);
+
+            // 💡 计算箱子里已经勾选（done=true）的件数
+            let doneQty = boxItems.filter(item => item.done).reduce((sum, item) => sum + item.qty, 0);
+
+            // 💡 修改标题，显示 已打包/总数
+            div.innerHTML = `
+                <h3>${b} <span style="font-size: 16px; color: #d9534f; margin-left: 8px;">(${doneQty}/${totalQty}件)</span></h3>
+                <button class="renameBoxBtn">✏ 重命名</button>
+                <button class="deleteBoxBtn">🗑 删除箱子</button>
+            `;
+
+            // 重命名箱子
+            div.querySelector(".renameBoxBtn").onclick = () => {
+                let newName = prompt("新的箱子名称", b);
+                if (!newName || newName.trim() === "") return;
+                newName = newName.trim();
+                if (state.boxes[newName]) {
+                    alert("已经存在同名箱子");
+                    return;
+                }
+                state.boxes[newName] = state.boxes[b];
+                state.items.forEach(item => { if (item.box === b) item.box = newName; });
+                delete state.boxes[b];
+                save(); render();
+            };
+
+            // 删除箱子
+            div.querySelector(".deleteBoxBtn").onclick = () => {
+                if (!confirm(`确定删除箱子"${b}"吗？里面的物品会移出箱子`)) return;
+                state.items.forEach(item => { if (item.box === b) item.box = ""; });
+                delete state.boxes[b];
+                save(); render();
+            };
+
+            div.ondragover = e => e.preventDefault();
+            div.ondrop = e => {
+                let id = Number(e.dataTransfer.getData("id"));
+                let item = state.items.find(x => x.id === id);
+                item.box = b;
+                save(); render();
+            };
+
+            state.items.filter(x => x.box === b).forEach(x => drawItem(div, x));
+            boxes.appendChild(div);
+        });
+
+        updateProgress(); // 渲染时也更新一次进度
+    }
+
+    function drawItem(parent, x) {
+        let d = document.createElement("div");
+        d.className = "item";
+        d.draggable = true;
+        d.id = "item-node-" + x.id;
+
+        d.ondragstart = e => { e.dataTransfer.setData("id", x.id); };
+
+        d.innerHTML = `
+            <label>
+                <input type="checkbox" ${x.done ? "checked" : ""}>
+                <b>${x.name}</b>
+            </label>
+            <div class="tag">分类：${x.cat}</div>
+            <div class="tag location-hint" style="color: #d9534f; font-weight: bold;">${x.box ? '📍 当前位置：' + x.box : '⚠️ 状态：未装箱'}</div>
+            <div class="tag">
+                数量：
+                <button class="minusBtn">－</button>
+                <input class="qtyInput" type="number" min="0" value="${x.qty}">
+                <button class="plusBtn">＋</button>
+            </div>
+            <input type="text" placeholder="备注" value="${x.note}">
+            <hr>
+            <button class="editBtn">✏ 编辑</button>
+            <button class="deleteBtn">🗑 删除</button>
+            <button class="removeBtn">📦 移出箱子</button>
+        `;
+
+        d.querySelector("input[type=checkbox]").onchange = e => { x.done = e.target.checked; save(); render(); };
+        d.querySelector("input[type=text]").oninput = e => { x.note = e.target.value; save(); };
+        d.querySelector(".minusBtn").onclick = () => { if (x.qty > 0) { x.qty--; save(); render(); } };
+        d.querySelector(".plusBtn").onclick = () => { x.qty++; save(); render(); };
+        d.querySelector(".qtyInput").onchange = e => {
+            let value = parseInt(e.target.value);
+            if (isNaN(value) || value < 0) value = 0;
+            x.qty = value;
+            save(); render();
+        };
+
+        d.querySelector(".editBtn").onclick = () => {
+            let newName = prompt("物品名称", x.name);
+            if (newName === null) return;
+            if (newName.trim() !== "") x.name = newName.trim();
+
+            let newCat = prompt("分类", x.cat);
+            if (newCat !== null && newCat.trim() !== "") {
+                newCat = newCat.trim();
+                if (!state.categories.includes(newCat)) state.categories.push(newCat);
+                x.cat = newCat;
+            }
+            save(); render();
+        };
+
+        d.querySelector(".deleteBtn").onclick = () => {
+            if (confirm(`确定删除 "${x.name}" 吗？`)) {
+                state.items = state.items.filter(item => item.id !== x.id);
+                save(); render();
+            }
+        };
+
+        d.querySelector(".removeBtn").onclick = () => { x.box = ""; save(); render(); };
+
+        if (x.done) d.classList.add("done");
+        parent.appendChild(d);
+    }
+
+    function addItemToCategory(cat) {
+        let name = prompt("物品名称");
+        if (!name || name.trim() === "") return;
+        let qty = parseInt(prompt("数量", "1"));
+        if (isNaN(qty) || qty < 0) qty = 1;
+        state.items.push({ id: Date.now(), name: name.trim(), qty: qty, cat: cat, box: "", done: false, note: "" });
+        save(); render();
+    }
+
+    function addCategory() {
+        let n = prompt("分类名称");
+        if (!n) return;
+        n = n.trim();
+        if (n && !state.categories.includes(n)) {
+            state.categories.push(n);
+            save(); render();
+        }
+    }
+
+    function renameCategory(oldName) {
+        let n = prompt("新的分类名称", oldName);
+        if (!n || n.trim() === "") return;
+        n = n.trim();
+        if (state.categories.includes(n)) { alert("分类已存在"); return; }
+        state.categories = state.categories.map(c => c === oldName ? n : c);
+        state.items.forEach(item => { if (item.cat === oldName) item.cat = n; });
+        save(); render();
+    }
+
+    function deleteCategory(cat) {
+        // 针对“未分类”的专属判断
+        if (cat === "未分类") {
+            let hasItems = state.items.some(item => item.cat === "未分类");
+            if (hasItems) {
+                alert("⚠️ 「未分类」中还有物品！请先将物品移动到其他分类，或删除它们后，再清理此分类。");
+                return;
+            } else {
+                if (!confirm(`确定删除空分类 "${cat}" 吗？`)) return;
+                state.categories = state.categories.filter(c => c !== cat);
+                save(); render();
+                return; // 删完空分类直接结束，不往下走
+            }
+        }
+
+        // 针对普通分类的删除逻辑
+        if (!confirm(`删除分类 "${cat}" ？里面的物品将被移入「未分类」`)) return;
+
+        state.categories = state.categories.filter(c => c !== cat);
+        state.items.forEach(item => { if (item.cat === cat) item.cat = "未分类"; });
+
+        // 只有当确实有物品无家可归时，才去兜底创建“未分类”
+        let needsUncategorized = state.items.some(item => item.cat === "未分类");
+        if (needsUncategorized && !state.categories.includes("未分类")) {
+            state.categories.push("未分类");
+        }
+
+        save(); render();
+    }
+
+    // ==== 下面是你要求加入的三个新/旧功能，放到独立层级 ====
+
+    function exportData() {
+        let data = JSON.stringify(state, null, 2);
+        let blob = new Blob([data], {type: "application/json"});
+        let url = URL.createObjectURL(blob);
+        let a = document.createElement("a");
+        a.href = url;
+        a.download = "新加坡打包清单备份.json";
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    function importData() {
+        let input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".json";
+        input.onchange = e => {
+            let file = e.target.files[0];
+            if (!file) return;
+            let reader = new FileReader();
+            reader.onload = function () {
+                try {
+                    let data = JSON.parse(reader.result);
+                    if (!data.items || !data.boxes) {
+                        alert("文件格式错误");
+                        return;
+                    }
+                    state = data;
+                    save();
+                    render();
+                    alert("导入成功");
+                } catch (err) {
+                    alert("读取失败");
+                }
+            };
+            reader.readAsText(file);
+        };
+        input.click();
+    }
+
+    function resetData() {
+        if (!confirm("确定恢复默认清单？当前修改会丢失")) return;
+        localStorage.removeItem("pack_state");
+        location.reload();
+    }
+
+    function addItem() {
+        let n = prompt("物品名称");
+        if (n && n.trim() !== "") {
+            state.items.push({
+                id: Date.now(),
+                name: n.trim(),
+                qty: 1,
+                cat: state.categories[0] || "未分类",
+                box: "",
+                done: false,
+                note: ""
+            });
+            save(); render();
+        }
+    }
+
+    function addBox() {
+        let n = prompt("箱子名称");
+        if (!n || n.trim() === "") return;
+        n = n.trim();
+        if (state.boxes[n]) {
+            alert("箱子已经存在");
+            return;
+        }
+        state.boxes[n] = [];
+        save(); render();
+    }
+
+    // ⚠️ 修复后的事件监听器：不要互相嵌套！分开写
+    document.getElementById("notes").oninput = e => {
+        state.notes = e.target.value;
+        save();
+    };
+
+    document.getElementById("search").oninput = () => {
+        render(); // 输入搜索词时触发重新渲染
+    };
+
+        // 💡 新增：一键清空搜索框并恢复全景
+    function clearSearch() {
+        document.getElementById("search").value = "";
+        render(); // 重新渲染，因为搜索词没了，所有东西都会回来
+    }
+
+    // 💡 修复后：定位成功后自动解除隐藏的终极版
+    function searchItem() {
+        let searchInput = document.getElementById("search");
+        let query = searchInput.value.trim().toLowerCase();
+
+        if (!query) {
+            alert("请输入要搜索的物品名称");
+            return;
+        }
+
+        // 在所有数据里查找
+        let found = state.items.find(x => x.name.toLowerCase().includes(query));
+        if (!found) {
+            alert(`未找到包含 "${query}" 的物品`);
+            return;
+        }
+
+        // 1. 如果物品在左边，准备展开它的父分类
+        if (!found.box) {
+            if (!catToggleState[found.cat]) {
+                catToggleState[found.cat] = true;
+            }
+        }
+
+        // 🌟 核心优化：定位成功后，自动清空搜索框！
+        searchInput.value = "";
+        // 🌟 立刻重绘页面，让被隐藏的其他物品全部“复活”
+        render();
+
+        // 2. 获取物品节点（必须在上面的 render() 之后执行）
+        let itemEl = document.getElementById("item-node-" + found.id);
+
+        if (itemEl) {
+            itemEl.scrollIntoView({ behavior: "smooth", block: "center" });
+            itemEl.style.border = "2px solid #d9534f";
+            itemEl.style.boxShadow = "0 0 12px rgba(217, 83, 79, 0.6)";
+
+            setTimeout(() => {
+                let currentEl = document.getElementById("item-node-" + found.id);
+                if (currentEl) {
+                    currentEl.style.border = "1px solid #ddd";
+                    currentEl.style.boxShadow = "none";
+                }
+            }, 3000);
+        } else {
+            let loc = found.box ? `【${found.box}】中` : `【分类：${found.cat}】中`;
+            alert(`找到物品：${found.name}\n具体位置在：${loc}`);
+        }
+    }
+
+    // 页面加载完毕后初次渲染
+    render();
+</script>
+</body>
+</html>
